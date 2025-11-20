@@ -16,6 +16,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { BACKEND_URL, API_URL } from '../config';
+import { usePermissions } from '../contexts/PermissionContext';
 
 const API = API_URL;
 
@@ -75,6 +76,7 @@ const ReadReceipt = ({ message, selectedChannel, currentUserId }) => {
 
 const Chats = () => {
   const { socket, channels, setChannels, on, sendMessage, joinChannel, leaveChannel, sendTyping, connected, channelUnreads, setChannelUnreads } = useSocket();
+  const { permissions, hasPermission } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingChannelId, setPendingChannelId] = useState(null); // Track channel ID from URL
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -251,7 +253,7 @@ const Chats = () => {
   };
 
   useEffect(() => {
-    console.log("prime". backendUrl)
+    console.log("prime", backendUrl)
     loadChannels();
     loadUsers();
     loadProjects();
@@ -482,6 +484,11 @@ const Chats = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
+      console.log('🔍 DEBUG: Channels API Response:', response.data);
+      console.log('🔍 DEBUG: Current User:', currentUser);
+      console.log('🔍 DEBUG: Current Permissions:', permissions);
+      console.log('🔍 DEBUG: Can Have Direct Chat:', hasPermission('can_have_direct_chat'));
+      
       // Handle new organized channel structure
       let allChannels = [];
       let channelOrganization = {
@@ -497,6 +504,7 @@ const Chats = () => {
         // New organized structure
         allChannels = response.data.channels;
         channelOrganization = response.data.organized;
+        console.log('🔍 DEBUG: Using organized structure. Project channels:', channelOrganization.project);
       } else if (Array.isArray(response.data)) {
         // Legacy flat array - organize ourselves
         allChannels = response.data;
@@ -508,7 +516,11 @@ const Chats = () => {
             channelOrganization.team.push(channel);
           }
         });
+        console.log('🔍 DEBUG: Using legacy structure. All channels:', allChannels);
       }
+      
+      console.log('🔍 DEBUG: Total channels loaded:', allChannels.length);
+      console.log('🔍 DEBUG: Project channels:', allChannels.filter(ch => ch.type === 'project'));
       
       // Try to fetch Milli channel (will fail for guests)
       try {
@@ -1632,20 +1644,29 @@ const Chats = () => {
 
   const openDirectMessage = async (userId) => {
     try {
+      console.log('Opening direct message with user:', userId);
+      console.log('Backend URL:', backendUrl);
+      console.log('Token available:', !!token);
+      console.log('Current user:', currentUser);
+      
       const response = await axios.get(
         `${backendUrl}/api/direct-channels/${userId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const dmChannel = response.data;
+      console.log('DM Channel received:', dmChannel);
       
-      // Add to channels if not already there
-      if (!channels.find(ch => ch.id === dmChannel.id)) {
-        setChannels([...channels, dmChannel]);
-      }
+      // Reload channels to ensure the new DM channel appears in the list
+      await loadChannels();
       
+      // Set the selected channel - this will trigger loading messages and joining the socket room
       setSelectedChannel(dmChannel);
+      console.log('DM Channel selected:', dmChannel.name);
     } catch (error) {
-      console.error('Failed to open direct message:', error);
+      console.error('Failed to open direct message - Full error:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      toast.error(`Failed to open chat: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -1861,15 +1882,22 @@ const Chats = () => {
     ch.type === 'direct' && ch.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
-  // Previously, clients had a restricted chat view. We now allow all roles
-  // to use the full chat experience (including Milli and channels).
-  const isExternalUser = false;
+  console.log('🔍 DEBUG RENDER: Team Channels:', teamChannels);
+  console.log('🔍 DEBUG RENDER: Project Channels:', projectChannels);
+  console.log('🔍 DEBUG RENDER: Direct Channels:', directChannels);
+  console.log('🔍 DEBUG RENDER: Permissions:', permissions);
+  console.log('🔍 DEBUG RENDER: HasPermission result:', hasPermission('can_have_direct_chat'));
+  
+  // Check if user has permission for direct chat
+  // If they don't have this permission, we hide the Direct Messages section
+  const canHaveDirectChat = hasPermission('can_have_direct_chat');
+  
+  console.log('🔍 DEBUG RENDER: canHaveDirectChat final value:', canHaveDirectChat);
 
   return (
-    <div className={`flex ${isExternalUser ? 'h-full' : 'h-[calc(100vh-4rem)]'} bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900`}>
-      {/* Sidebar - Hidden for external users (clients) */}
-      {!isExternalUser && (
-        <div className="w-64 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div className={`flex h-[calc(100vh-4rem)] bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900`}>
+      {/* Sidebar - Always shown for authenticated users */}
+      <div className="w-64 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-r border-gray-200 dark:border-gray-700 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-transparent bg-clip-text">
@@ -1912,49 +1940,47 @@ const Chats = () => {
           )}
           
           {/* Team Channels Section - Main and Only Category */}
-          {!isExternalUser && (
-            <div className="p-2">
-              <div className="flex items-center justify-between px-2 py-1 mb-2">
+          <div className="p-2">
+            <div className="flex items-center justify-between px-2 py-1 mb-2">
+              <button
+                onClick={() => toggleSection('channels')}
+                className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1"
+              >
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                  Team Channels
+                </span>
+                {expandedSections.channels ? (
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-500" />
+                )}
+              </button>
+              {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
                 <button
-                  onClick={() => toggleSection('channels')}
-                  className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1"
+                  onClick={() => setShowCreateChannel(true)}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  title="Create new channel"
                 >
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                    Team Channels
-                  </span>
-                  {expandedSections.channels ? (
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-500" />
-                  )}
+                  <Plus className="w-4 h-4 text-gray-500" />
                 </button>
+              )}
+            </div>
+            {expandedSections.channels && teamChannels.length > 0 ? (
+              teamChannels.map((channel) => renderChannelItem(channel))
+            ) : expandedSections.channels && teamChannels.length === 0 ? (
+              <div className="px-3 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                No team channels yet. 
                 {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
                   <button
                     onClick={() => setShowCreateChannel(true)}
-                    className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                    title="Create new channel"
+                    className="block mx-auto mt-2 text-indigo-600 dark:text-indigo-400 hover:underline"
                   >
-                    <Plus className="w-4 h-4 text-gray-500" />
+                    Create your first channel
                   </button>
                 )}
               </div>
-              {expandedSections.channels && teamChannels.length > 0 ? (
-                teamChannels.map((channel) => renderChannelItem(channel))
-              ) : expandedSections.channels && teamChannels.length === 0 ? (
-                <div className="px-3 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
-                  No team channels yet. 
-                  {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
-                    <button
-                      onClick={() => setShowCreateChannel(true)}
-                      className="block mx-auto mt-2 text-indigo-600 dark:text-indigo-400 hover:underline"
-                    >
-                      Create your first channel
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          )}
+            ) : null}
+          </div>
           
           {/* Project Channels Section */}
           {projectChannels.length > 0 && (
@@ -1976,8 +2002,8 @@ const Chats = () => {
             </div>
           )}
 
-          {/* Direct Messages Section - Hidden for clients */}
-          {!isExternalUser && (
+          {/* Direct Messages Section - Only shown if user has direct chat permission */}
+          {canHaveDirectChat && (
             <div className="p-2">
               <div className="flex items-center justify-between px-2 py-1 mb-2">
                 <button
@@ -2084,8 +2110,7 @@ const Chats = () => {
             {connected ? 'Connected' : 'Disconnected'}
           </div>
         </div>
-        </div>
-      )}
+      </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">

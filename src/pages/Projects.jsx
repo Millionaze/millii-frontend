@@ -115,6 +115,7 @@ const Projects = ({ currentUser, onLogout }) => {
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [viewType, setViewType] = useState('list'); // Default to list view
   const [showMyProjects, setShowMyProjects] = useState(currentUser?.role !== 'admin');
   const [projectStatusFilter, setProjectStatusFilter] = useState('active'); // 'active', 'completed', 'archived'
@@ -349,6 +350,7 @@ const Projects = ({ currentUser, onLogout }) => {
 
   const handleAddProject = async (e) => {
     e.preventDefault();
+    setCreatingProject(true);
     try {
       const token = localStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -380,6 +382,8 @@ const Projects = ({ currentUser, onLogout }) => {
       fetchData();
     } catch (error) {
       toast.error('Failed to create project');
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -3161,11 +3165,18 @@ const Projects = ({ currentUser, onLogout }) => {
             </div>
 
             <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => setAddProjectOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setAddProjectOpen(false)} disabled={creatingProject}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white font-semibold hover:shadow-xl hover:shadow-purple-500/50 transition-all duration-300 hover:scale-105 border-0">
-                Create Project
+              <Button type="submit" disabled={creatingProject} className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white font-semibold hover:shadow-xl hover:shadow-purple-500/50 transition-all duration-300 hover:scale-105 border-0">
+                {creatingProject ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Project'
+                )}
               </Button>
             </div>
           </form>
