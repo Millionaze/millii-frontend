@@ -233,15 +233,15 @@ function App() {
                 }
               />
               {/* Chats Route - Works for both workspace and client portal */}
+              {/* Clients can access chats for project channels even without direct chat permission */}
+              {/* Permission filtering happens inside the Chats component itself */}
               <Route
                 path="/chats"
                 element={
                   isAuthenticated ? (
                     (currentUser?.role === 'client') ? (
                       <ClientPortalLayout currentUser={currentUser} onLogout={handleLogout}>
-                        <ProtectedRoute permission={['can_have_direct_chat', 'can_chat_with_millii']}>
-                          <Chats currentUser={currentUser} />
-                        </ProtectedRoute>
+                        <Chats currentUser={currentUser} />
                       </ClientPortalLayout>
                     ) : (
                       <MainLayout currentUser={currentUser} onLogout={handleLogout}>
