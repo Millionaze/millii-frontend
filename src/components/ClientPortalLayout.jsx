@@ -57,9 +57,15 @@ const ClientPortalLayout = ({ children, currentUser, onLogout }) => {
   };
 
   const handleChatNavigation = (channelId = null) => {
+    console.log('🚀 NAVIGATION: handleChatNavigation called with channelId:', channelId);
+    const channel = channels.find(ch => ch.id === channelId);
+    console.log('🚀 NAVIGATION: Channel details:', channel);
+    
     if (channelId) {
+      console.log('🚀 NAVIGATION: Navigating to /chats with channel query:', channelId);
       navigate(`/chats?channel=${channelId}`);
     } else {
+      console.log('🚀 NAVIGATION: Navigating to /chats without channel');
       navigate('/chats');
     }
   };
