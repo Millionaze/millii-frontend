@@ -59,15 +59,16 @@ const ClockInOutDialog = ({ open, onOpenChange, currentUser, activeTimeEntry, on
       const token = localStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const [tasksRes, projectsRes] = await Promise.all([
-        axios.get(`${API}/tasks`, { headers }),
+        axios.get(`${API}/my-tasks`, { headers }), // Changed from /tasks to /my-tasks
         axios.get(`${API}/projects`, { headers })
       ]);
       const projectsData = Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data?.data || [];
       const tasksData = Array.isArray(tasksRes.data) ? tasksRes.data : tasksRes.data?.data || [];
       const projectsMap = {};
       projectsData.forEach(project => { projectsMap[project.id] = project.name; });
+      // /my-tasks already filters by assignee, just filter by status
       const myTasks = tasksData
-        .filter(task => task.assignee === currentUser?.id && (task.status === 'Not Started' || task.status === 'In Progress'))
+        .filter(task => task.status === 'Not Started' || task.status === 'In Progress')
         .map(task => ({ ...task, project_name: projectsMap[task.project_id] || 'No Project' }));
       setTasks(myTasks);
     } catch (error) {
